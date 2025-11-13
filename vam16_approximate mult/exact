@@ -1,0 +1,67 @@
+#ifndef DATAPATH_H
+#define DATAPATH_H
+
+#include <systemc.h>
+
+SC_MODULE(Datapath) {
+    sc_in<sc_logic> clk, rst;
+    sc_in<sc_logic> enable;
+    sc_in<sc_uint<16>> A, B;
+    sc_out<sc_uint<32>> result;
+    sc_out<sc_logic> done;
+
+    sc_uint<32> acc;
+    int i;
+
+    void process() {
+        if (rst.read() == SC_LOGIC_1) {
+            acc = 0;
+            i = 0;
+            result.write(0);
+            done.write(SC_LOGIC_0);
+        } else if (enable.read() == SC_LOGIC_1) {
+            if (i == 0)
+                acc = 0;
+
+            if (i < 16) {
+                // Get 2 bits of B for radix-4 (2 bits: 00, 01, 10, 11)
+                sc_uint<2> digit = (B.read() >> i) & 0x3;
+                sc_uint<32> partial = 0;
+
+                // Handle radix-4 cases:
+                switch (digit) {
+                    case 0: // A * 0
+                        partial = 0;
+                        break;
+                    case 1: // A * 1
+                        partial = A.read();
+                        break;
+                    case 2: // A * 2 (A << 1)
+                        partial = A.read() << 1;
+                        break;
+                    case 3: // A * 3 (A + A*2)
+                        partial = A.read() + (A.read() << 1);
+                        break;
+                }
+
+                // Shift partial result and accumulate it
+                acc += (partial << (i));  // Shift by i to position the partial result
+                i += 2;  // Move to the next 2 bits of B
+                done.write(SC_LOGIC_0);
+            } else {
+                result.write(acc);
+                done.write(SC_LOGIC_1);
+                i = 0;  // Reset for the next multiplication
+            }
+        } else {
+            done.write(SC_LOGIC_0);
+        }
+    }
+
+    SC_CTOR(Datapath) {
+        SC_METHOD(process);
+        sensitive << clk.pos();
+    }
+};
+
+#endif
